@@ -2,19 +2,21 @@ package main
 
 import (
 	"fmt"
-	"sql"
-	_ "go-sqlite"
+	"database/sql"
 	"os"
 	"log"
 	"encoding/json"
 	"strconv"
 )
 
+import "github.com/kisielk/sqlstruct"
+import "github.com/mattn/go-sqlite3"
+
 const History = "History_copy" // filename.  should be taken as an argument in the future
 const limit = 10 // query LIMIT in sql ... should be a command line argument
 // ...no need of type specification
 
-type visit struct{
+type Visit struct {
 	// from "visits" table
 	id int // "visits.id"
 	from int // id in "visits.from_visit" pointing to "visits.id"
@@ -25,19 +27,25 @@ type visit struct{
 	title string
 }
 
-type node struct{
+type Node struct {
 	id int 
 	reflexive bool
 	_type string `json:"type"`// in json, it should be "type"
 	desc string
-	index int // forgot how it worked...
+	index int // forgot how it worked... not important here
 	weight int
+	// they're irrelevant here (calculated by app.js)
 	x int
 	y int
 	px int
 	py int
 }
 
+type Link struct {
+	source, target int
+	left, right bool
+//	style string  --> do it later!  seek for the minimal implementation
+}
 func main() {
 	// (I)   read data from  sql "History"
 	moveToDir() // for current use
@@ -47,19 +55,47 @@ func main() {
 	}
 	defer db.Close()
 	
-	sql := chooseSqlStmt(1) // should be fully implemented
+	sqlStmt := chooseSqlStmt(1) // should be fully implemented
 
-	visits := [limit]visit
+	Visits := [limit]Visit{}
 
-	raws, err := db.Query(sql)
+	raws, err := db.Query(sqlStmt)
 	if err != nil {
 		log.Fatal(err)
 	}
-	
-	for i:=0; raws.Next() {
-		visits[
+
+	Nodes := [limit]Node{}
+	Links := [limit]Link{}
+
+	for i:=0; raws.Next(); i++{
+		Visits[i] = Visit{}
+		v := &Visits[i]
+		raws.Scan(v.id, v.from, v.time, v.transition, v.url, v.title)
+//		raws.Scan(
+		// maybe .. no need to loop through twice!
+		//
+		if v.from == 0 {
+			v.from = v.id - 1 // connect to the node right before
+			//link.style = "new" 
+		}
+		// make node
+		node := new(Node)
+		node.id = v.id	// id is the same among node and visit
+		node.misc = misc{v.time, v.url}
+		node.desc = v.title
+		// abced specific fields
+		node._type = "A" // necessary
+		node.weight = 1 // necessary
+		// make link
+		link := new(Link)
+		link.source = v.from
+		link.target = v.id // always points to itself
+		link.left = false
+		link.right = true	
+
 	}
 	// (II)  interpret the data as graph (json)
+	
 	// (III) output json file to stdout.
 	
 }
