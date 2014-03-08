@@ -28,28 +28,30 @@ type Visit struct {
 }
 
 type Node struct {
-	id int  
-	reflexive bool
-	_type string `json:"type"`// in json, it should be "type"
-	desc string
-	index int // forgot how it worked... not important here
-	weight int
+	Id int  `json:"id"`
+	Reflexive bool `json:"reflexive"`
+	Type string `json:"type"`// in json, it should be "type"
+	Desc string `json:"desc"`
+	index int `json:"index"`// forgot how it worked... not important here
+	Weight int `json:"weight"`
 	// they're irrelevant here (calculated by app.js)
-	x int
-	y int
-	px int
-	py int
+	X int `json:"x"`
+	Y int `json:"y"`
+	Px int `json:"px"`
+	Py int `json:"py"`
 }
 
 type Link struct {
-	source, target int
-	left, right bool
+	Source int `json:"source"`
+	Target int `json:"target"`
+	Left bool `json:"left"`
+	Right bool `json:"right"`
 //	style string  --> do it later!  seek for the minimal implementation
 }
 
 type Graph struct {
-	nodes [5]Node
-	links [5]Link
+	Nodes [5]Node `json:"nodes"`
+	Links [5]Link `json:"links"`
 }
 
 func main() {
@@ -62,7 +64,7 @@ func main() {
 	defer db.Close()
 	
 	sqlStmt := chooseSqlStmt(1) // should be fully implemented
-	fmt.Println("Query:" + sqlStmt)
+//	fmt.Println("Query:" + sqlStmt)
 	Visits := [limit]Visit{}
 
 	raws, err := db.Query(sqlStmt)
@@ -84,32 +86,48 @@ func main() {
 		}
 		// make node
 		node := &Nodes[i] // must be POINTER
-		node.id = v.id	// id is the same among node and visit
+		node.Id = v.id	// id is the same among node and visit
 //		node.misc = misc{v.time, v.url}
-		node.desc = v.title
+		node.Desc = v.title
 		// abced specific fields
-		node._type = "A" // necessary
-		node.weight = 1 // necessary
+		node.Type = "A" // necessary
+		node.Weight = 1 // necessary
 		// make link
 		link := &Links[i]
-		link.source = v.from
-		link.target = v.id // always points to itself
-		link.left = false
-		link.right = true
+		link.Source = v.from
+		link.Target = v.id // always points to itself
+		link.Left = false
+		link.Right = true
 //		fmt.Println("node.id:")
 //		fmt.Println(node.id)
 	}
 //	fmt.Println(Visits) no prob for Visits
-//	fmt.Println(Nodes)
-//	fmt.Println(Links)
+
 	// (II)  interpret the data as graph (json)
+//	n := Link{13, 12, false, true}
+//	fmt.Println("Link struct:",n)
+//	nj, err := json.Marshal(n)
+	// if err != nil {
+	// 	log.Fatal(err)
+	// }
+	// os.Stdout.Write(nj)
+	// fmt.Println("stdout of Links")
+	// linksJ, _ := json.Marshal(Links)
+	// os.Stdout.Write(linksJ)
+	// fmt.Println("")
+
+	// fmt.Println("Nodes:")
+	// fmt.Println(Nodes)
+	// nodesJ, _ := json.Marshal(Nodes)
+	// os.Stdout.Write(nodesJ)
+	// fmt.Println("\n")
 	graph := Graph{Nodes, Links}
 //	fmt.Println(graph)
 	jsonData, err := json.Marshal(graph)
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Println(jsonData)
+//	fmt.Println(jsonData) gives empty return
 	// (III) output json file to stdout.
 	os.Stdout.Write(jsonData)
 }
@@ -122,11 +140,11 @@ func moveToDir() { // should take argument as a filename
 	if err != nil{
 		log.Fatal(err)
 	}
-	dir, err:= os.Getwd()
-	if err != nil{
-		log.Fatal(err)
-	}
-	fmt.Println("the current dir:"+dir)
+	// dir, err:= os.Getwd()
+	// if err != nil{
+	// 	log.Fatal(err)
+	// }
+//	fmt.Println("the current dir:"+dir)
 
 	if _, err := os.Stat(History); os.IsNotExist(err){
 		fmt.Printf("no such file: %s\n", History)
