@@ -9,11 +9,11 @@ import (
 	"strconv"
 )
 
-import "github.com/kisielk/sqlstruct"
-import "github.com/mattn/go-sqlite3"
+//import "github.com/kisielk/sqlstruct"
+import _ "github.com/mattn/go-sqlite3"
 
 const History = "History_copy" // filename.  should be taken as an argument in the future
-const limit = 10 // query LIMIT in sql ... should be a command line argument
+const limit = 5 // query LIMIT in sql ... should be a command line argument
 // ...no need of type specification
 
 type Visit struct {
@@ -28,7 +28,7 @@ type Visit struct {
 }
 
 type Node struct {
-	id int 
+	id int  
 	reflexive bool
 	_type string `json:"type"`// in json, it should be "type"
 	desc string
@@ -46,6 +46,12 @@ type Link struct {
 	left, right bool
 //	style string  --> do it later!  seek for the minimal implementation
 }
+
+type Graph struct {
+	nodes [5]Node
+	links [5]Link
+}
+
 func main() {
 	// (I)   read data from  sql "History"
 	moveToDir() // for current use
@@ -56,48 +62,56 @@ func main() {
 	defer db.Close()
 	
 	sqlStmt := chooseSqlStmt(1) // should be fully implemented
-
+	fmt.Println("Query:" + sqlStmt)
 	Visits := [limit]Visit{}
 
 	raws, err := db.Query(sqlStmt)
 	if err != nil {
 		log.Fatal(err)
 	}
-
+//	fmt.Println(raws) // no prob so far
 	Nodes := [limit]Node{}
 	Links := [limit]Link{}
 
 	for i:=0; raws.Next(); i++{
-		Visits[i] = Visit{}
+//		Visits[i] = Visit{}
 		v := &Visits[i]
-		raws.Scan(v.id, v.from, v.time, v.transition, v.url, v.title)
-//		raws.Scan(
-		// maybe .. no need to loop through twice!
-		//
+		raws.Scan(&v.id, &v.from, &v.time, &v.transition, &v.url, &v.title)
+//		fmt.Println(v) // no prob so far
 		if v.from == 0 {
 			v.from = v.id - 1 // connect to the node right before
-			//link.style = "new" 
+			//link.style = "new" // --> nonminimal
 		}
 		// make node
-		node := new(Node)
+		node := &Nodes[i] // must be POINTER
 		node.id = v.id	// id is the same among node and visit
-		node.misc = misc{v.time, v.url}
+//		node.misc = misc{v.time, v.url}
 		node.desc = v.title
 		// abced specific fields
 		node._type = "A" // necessary
 		node.weight = 1 // necessary
 		// make link
-		link := new(Link)
+		link := &Links[i]
 		link.source = v.from
 		link.target = v.id // always points to itself
 		link.left = false
-		link.right = true	
-
+		link.right = true
+//		fmt.Println("node.id:")
+//		fmt.Println(node.id)
 	}
+//	fmt.Println(Visits) no prob for Visits
+//	fmt.Println(Nodes)
+//	fmt.Println(Links)
 	// (II)  interpret the data as graph (json)
-	
+	graph := Graph{Nodes, Links}
+//	fmt.Println(graph)
+	jsonData, err := json.Marshal(graph)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println(jsonData)
 	// (III) output json file to stdout.
-	
+	os.Stdout.Write(jsonData)
 }
 func output(data []byte) {
 	encoder := json.NewEncoder(os.Stdout)
@@ -123,7 +137,7 @@ func chooseSqlStmt(flag int) string{
 	// switch sql statement according to the argument
 	switch flag {
 	case 1:
-		return "SELECT visits.id, visits.from_visit, visits.visit_time, vists.transition, urls.url, urls.title FROM visits LEFT JOIN urls ON visits.url = urls.id ORDER BY visit_time DESC LIMIT "+strconv.Itoa(limit)
+		return "SELECT visits.id, visits.from_visit, visits.visit_time, visits.transition, urls.url, urls.title FROM visits LEFT JOIN urls ON visits.url = urls.id ORDER BY visit_time DESC LIMIT "+strconv.Itoa(limit)
 	default:
 		return "" // invokes error
 	}
