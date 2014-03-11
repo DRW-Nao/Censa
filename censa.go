@@ -8,6 +8,7 @@ import (
 //	"encoding/json"
 	"encoding/xml"
 	"strconv"
+	"html"
 )
 
 //import "github.com/kisielk/sqlstruct"
@@ -58,7 +59,7 @@ type Graph struct {
 const ContentType = "text/html"
 type Content struct {
 	ContentType string  `xml:"content-type,attr"`
-	CDATA string
+	CDATA string `xml:"span"`
 }
 type Ref struct {
 	Refname string `xml:"name,attr"`
@@ -100,6 +101,8 @@ func main() {
 
 //	Id2title := make(map[int]string)
 	Abnodes := make(map[int]Abnode)
+	const cdataPrefix = "<![CDATA["
+	const cdataPostfix = "]]>"
 	for raws.Next() {
 //		Visits[i] = Visit{}
 		v := Visit{}
@@ -129,16 +132,16 @@ func main() {
 //		fmt.Println(node.id)
 
 		// create A-node
-		Abnodes[v.id] = Abnode{Name: strconv.Itoa(v.id), Content: Content{ContentType: ContentType, CDATA: v.url + v.title}}
+		Abnodes[v.id] = Abnode{Name: strconv.Itoa(v.id), Content: Content{ContentType: ContentType, CDATA: html.EscapeString(cdataPrefix+"<a href='"+v.url+"'>" + v.title + "</a>" +cdataPostfix)}}
 	}
 	const maskVal = 100 // id of B-node is masked by *100
 	// create B-node)ake <abstructure-ref> 
-	for _ , visit := range Visits {
+	for visitId , visit := range Visits {
 		sourceId := visit.from  // int
-		if source, exists := Visits[sourceId]; exists {
-			sref := Ref{source.title}
+		if _, exists := Visits[sourceId]; exists {
+			sref := Ref{strconv.Itoa(sourceId)}
 			srefs:= []Ref{sref}
-			tref := Ref{visit.title}
+			tref := Ref{strconv.Itoa(visitId)}
 			trefs:= []Ref{tref}
 			masked := sourceId * maskVal
 			Abnodes[masked] = Abnode{Name: strconv.Itoa(masked),Dpreds: Dpreds{srefs}, Dsuccs: Dsuccs{trefs}}
