@@ -5,7 +5,8 @@ import (
 	"database/sql"
 	"os"
 	"log"
-	"encoding/json"
+//	"encoding/json"
+	"encoding/xml"
 	"strconv"
 )
 
@@ -54,6 +55,28 @@ type Graph struct {
 	Links [5]Link `json:"links"`
 }
 
+const ContentType = "text/html"
+type Content struct {
+	ContentType string  `xml:"content-type,attr"`
+	CDATA string
+}
+type Ref struct {
+	Refname string `xml:"name,attr"`
+}
+type Dpreds struct {
+	Abnode_ref []Ref `xml:"abnode-ref,omitempty"`
+}
+type Dsuccs struct {
+	Abnode_ref []Ref `xml:"abnode-ref"`
+}
+type Abnode struct {
+	XMLName   xml.Name `xml:"abnode"`
+	Name string `xml:"name,attr"`
+	Dpreds Dpreds `xml:"dpreds,omitempty"` // omitempty not working?
+	Dsuccs Dsuccs `xml:"dsuccs,omitempty"` // omitempty not working?
+	Content Content `xml:"content"`
+}
+
 func main() {
 	// (I)   read data from  sql "History"
 	moveToDir() // for current use
@@ -65,42 +88,77 @@ func main() {
 	
 	sqlStmt := chooseSqlStmt(1) // should be fully implemented
 //	fmt.Println("Query:" + sqlStmt)
-	Visits := [limit]Visit{}
+	Visits := make(map[int]Visit)
 
 	raws, err := db.Query(sqlStmt)
 	if err != nil {
 		log.Fatal(err)
 	}
 //	fmt.Println(raws) // no prob so far
-	Nodes := [limit]Node{}
-	Links := [limit]Link{}
+	// Nodes := [limit]Node{}
+	// Links := [limit]Link{}
 
-	for i:=0; raws.Next(); i++{
+//	Id2title := make(map[int]string)
+	Abnodes := make(map[int]Abnode)
+	for raws.Next() {
 //		Visits[i] = Visit{}
-		v := &Visits[i]
+		v := Visit{}
 		raws.Scan(&v.id, &v.from, &v.time, &v.transition, &v.url, &v.title)
+		Visits[v.id] = v
+//		Id2title[v.id] = v.title
 //		fmt.Println(v) // no prob so far
-		if v.from == 0 {
-			v.from = v.id - 1 // connect to the node right before
-			//link.style = "new" // --> nonminimal
-		}
+		// if v.from == 0 {
+		// 	v.from = v.id - 1 // connect to the node right before
+		// 	//link.style = "new" // --> nonminimal
+		// }
 		// make node
-		node := &Nodes[i] // must be POINTER
-		node.Id = v.id	// id is the same among node and visit
-//		node.misc = misc{v.time, v.url}
-		node.Desc = v.title
-		// abced specific fields
-		node.Type = "A" // necessary
-		node.Weight = 1 // necessary
-		// make link
-		link := &Links[i]
-		link.Source = v.from
-		link.Target = v.id // always points to itself
-		link.Left = false
-		link.Right = true
+// 		node := &Nodes[i] // must be POINTER
+// 		node.Id = v.id	// id is the same among node and visit
+// //		node.misc = misc{v.time, v.url}
+// 		node.Desc = v.title
+// 		// abced specific fields
+// 		node.Type = "A" // necessary
+// 		node.Weight = 1 // necessary
+// 		// make link
+// 		link := &Links[i]
+// 		link.Source = v.from
+// 		link.Target = v.id // always points to itself
+// 		link.Left = false
+// 		link.Right = true
 //		fmt.Println("node.id:")
 //		fmt.Println(node.id)
+
+		// create A-node
+		Abnodes[v.id] = Abnode{Name: strconv.Itoa(v.id), Content: Content{ContentType: ContentType, CDATA: v.url + v.title}}
 	}
+	const maskVal = 100 // id of B-node is masked by *100
+	// create B-node)ake <abstructure-ref> 
+	for _ , visit := range Visits {
+		sourceId := visit.from  // int
+		if source, exists := Visits[sourceId]; exists {
+			sref := Ref{source.title}
+			srefs:= []Ref{sref}
+			tref := Ref{visit.title}
+			trefs:= []Ref{tref}
+			masked := sourceId * maskVal
+			Abnodes[masked] = Abnode{Name: strconv.Itoa(masked),Dpreds: Dpreds{srefs}, Dsuccs: Dsuccs{trefs}}
+		}
+	}
+	type Abstructure struct {
+		XMLName xml.Name `xml:"abstructure"`
+		Abnodes []Abnode
+	}
+
+	Ablists := make([]Abnode, 0, len(Abnodes))//map2list(Abnodes)
+	for _, abnode := range Abnodes {
+		Ablists = append(Ablists, abnode)
+	}
+	xmlOutput, err := xml.MarshalIndent(Abstructure{Abnodes: Ablists}, "  ", "    ")
+	if err != nil {
+		log.Fatal(err)
+	}
+	os.Stdout.Write(xmlOutput)
+	
 //	fmt.Println(Visits) no prob for Visits
 
 	// (II)  interpret the data as graph (json)
@@ -121,20 +179,20 @@ func main() {
 	// nodesJ, _ := json.Marshal(Nodes)
 	// os.Stdout.Write(nodesJ)
 	// fmt.Println("\n")
-	graph := Graph{Nodes, Links}
-//	fmt.Println(graph)
-	jsonData, err := json.Marshal(graph)
-	if err != nil {
-		log.Fatal(err)
-	}
-//	fmt.Println(jsonData) gives empty return
-	// (III) output json file to stdout.
-	os.Stdout.Write(jsonData)
+// 	graph := Graph{Nodes, Links}
+// //	fmt.Println(graph)
+// 	jsonData, err := json.Marshal(graph)
+// 	if err != nil {
+// 		log.Fatal(err)
+// 	}
+// //	fmt.Println(jsonData) gives empty return
+// 	// (III) output json file to stdout.
+// 	os.Stdout.Write(jsonData)
 }
-func output(data []byte) {
-	encoder := json.NewEncoder(os.Stdout)
-	encoder.Encode(data)
-}
+// func output(data []byte) {
+// 	encoder := json.NewEncoder(os.Stdout)
+// 	encoder.Encode(data)
+// }
 func moveToDir() { // should take argument as a filename
 	err := os.Chdir("/Users/DRW/Desktop/")
 	if err != nil{
@@ -160,3 +218,5 @@ func chooseSqlStmt(flag int) string{
 		return "" // invokes error
 	}
 }
+
+//func map2list (map[
