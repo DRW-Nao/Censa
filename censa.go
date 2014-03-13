@@ -9,6 +9,7 @@ import (
 	"encoding/xml"
 	"strconv"
 	"html"
+	"flag"
 )
 
 //import "github.com/kisielk/sqlstruct"
@@ -78,7 +79,15 @@ type Abnode struct {
 	Content Content `xml:"content"`
 }
 
+func init() {
+	// History --last <num> [file]  --> query: ORDER BY visit_time DESC LIMIT <num>
+	// History --since <date> [file] --> query: WHERE visit_time > <utcDate>
+	// History --between <date> <date> [file]
+	
+}
 func main() {
+	init() // command line args, flag management
+	
 	// (I)   read data from  sql "History"
 	moveToDir() // for current use
 	db, err := sql.Open("sqlite3", History)
