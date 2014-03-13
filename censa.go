@@ -8,7 +8,9 @@ import (
 //	"encoding/json"
 	"encoding/xml"
 	"strconv"
-	"html"
+//	"html"
+	"html/template"
+	"bytes"
 )
 
 //import "github.com/kisielk/sqlstruct"
@@ -25,8 +27,8 @@ type Visit struct {
 	time int // from epoch UTC ("visits.visit_time")
 	transition int
 	// from "urls" table
-	url string
-	title string
+	Url string
+	Title string
 }
 
 type Node struct {
@@ -56,10 +58,10 @@ type Graph struct {
 	Links [5]Link `json:"links"`
 }
 
-const ContentType = "text/html"
+const ContentType = "html"
 type Content struct {
-	ContentType string  `xml:"content-type,attr"`
-	CDATA string `xml:"span"`
+	ContentType string  `xml:"type,attr"`
+	CDATA string `xml:"![CDATA["` // create tags <![CDATA[> and replace them later
 }
 type Ref struct {
 	Refname string `xml:"name,attr"`
@@ -88,52 +90,58 @@ func main() {
 	defer db.Close()
 	
 	sqlStmt := chooseSqlStmt(1) // should be fully implemented
-//	fmt.Println("Query:" + sqlStmt)
+	//	fmt.Println("Query:" + sqlStmt)
 	Visits := make(map[int]Visit)
-
+	
 	raws, err := db.Query(sqlStmt)
 	if err != nil {
 		log.Fatal(err)
 	}
-//	fmt.Println(raws) // no prob so far
+	//	fmt.Println(raws) // no prob so far
 	// Nodes := [limit]Node{}
 	// Links := [limit]Link{}
-
-//	Id2title := make(map[int]string)
+	
+	//	Id2title := make(map[int]string)
 	Abnodes := make(map[int]Abnode)
-	const cdataPrefix = "<![CDATA["
-	const cdataPostfix = "]]>"
+
+	const cdataTemp = `<a href='{{.Url}}'>{{.Title}}</a>`
+	t := template.Must(template.New("cdataTemplate").Parse(cdataTemp))
+	var buffer bytes.Buffer
 	for raws.Next() {
-//		Visits[i] = Visit{}
+		//		Visits[i] = Visit{}
 		v := Visit{}
-		raws.Scan(&v.id, &v.from, &v.time, &v.transition, &v.url, &v.title)
+		raws.Scan(&v.id, &v.from, &v.time, &v.transition, &v.Url, &v.Title)
 		Visits[v.id] = v
-//		Id2title[v.id] = v.title
-//		fmt.Println(v) // no prob so far
+		//		Id2title[v.id] = v.title
+		//		fmt.Println(v) // no prob so far
 		// if v.from == 0 {
 		// 	v.from = v.id - 1 // connect to the node right before
 		// 	//link.style = "new" // --> nonminimal
 		// }
 		// make node
-// 		node := &Nodes[i] // must be POINTER
-// 		node.Id = v.id	// id is the same among node and visit
-// //		node.misc = misc{v.time, v.url}
-// 		node.Desc = v.title
-// 		// abced specific fields
-// 		node.Type = "A" // necessary
-// 		node.Weight = 1 // necessary
-// 		// make link
-// 		link := &Links[i]
-// 		link.Source = v.from
-// 		link.Target = v.id // always points to itself
-// 		link.Left = false
-// 		link.Right = true
-//		fmt.Println("node.id:")
-//		fmt.Println(node.id)
-
+		// 		node := &Nodes[i] // must be POINTER
+		// 		node.Id = v.id	// id is the same among node and visit
+		// //		node.misc = misc{v.time, v.url}
+		// 		node.Desc = v.title
+		// 		// abced specific fields
+		// 		node.Type = "A" // necessary
+		// 		node.Weight = 1 // necessary
+		// 		// make link
+		// 		link := &Links[i]
+		// 		link.Source = v.from
+		// 		link.Target = v.id // always points to itself
+		// 		link.Left = false
+		// 		link.Right = true
+		//		fmt.Println("node.id:")
+		//		fmt.Println(node.id)
+		buffer.Reset()
+		t.Execute(&buffer, v)
 		// create A-node
-		Abnodes[v.id] = Abnode{Name: strconv.Itoa(v.id), Content: Content{ContentType: ContentType, CDATA: html.EscapeString(cdataPrefix+"<a href='"+v.url+"'>" + v.title + "</a>" +cdataPostfix)}}
+//		Abnodes[v.id] = Abnode{Name: strconv.Itoa(v.id), Content: Content{ContentType: ContentType, CDATA: buffer.String()}}
+		Abnodes[v.id] = Abnode{Name: strconv.Itoa(v.id), Content: Content{ContentType: ContentType, CDATA: buffer.String()}}
+//		fmt.Println("buffer content:",buffer.String())
 	}
+	
 	const maskVal = 100 // id of B-node is masked by *100
 	// create B-node)ake <abstructure-ref> 
 	for visitId , visit := range Visits {
@@ -151,7 +159,7 @@ func main() {
 		XMLName xml.Name `xml:"abstructure"`
 		Abnodes []Abnode
 	}
-
+	
 	Ablists := make([]Abnode, 0, len(Abnodes))//map2list(Abnodes)
 	for _, abnode := range Abnodes {
 		Ablists = append(Ablists, abnode)
@@ -160,6 +168,12 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	// format CDATA tag in byte
+	xmlOutput = bytes.Replace(xmlOutput, []byte("<![CDATA[>"), []byte("<![CDATA["), -1)
+	xmlOutput = bytes.Replace(xmlOutput, []byte("</![CDATA[>"), []byte("]]>"), -1)
+	xmlOutput = bytes.Replace(xmlOutput, []byte("&lt;"), []byte("<"), -1)
+	xmlOutput = bytes.Replace(xmlOutput, []byte("&gt;"), []byte(">"), -1)
+	xmlOutput = bytes.Replace(xmlOutput, []byte("&#39;"), []byte("'"), -1)
 	os.Stdout.Write(xmlOutput)
 	
 //	fmt.Println(Visits) no prob for Visits
