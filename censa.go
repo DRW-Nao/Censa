@@ -1,7 +1,7 @@
 package main
 
 import (
-	"fmt"
+//	"fmt"
 	"database/sql"
 	"os"
 	"log"
@@ -10,14 +10,11 @@ import (
 	"strconv"
 	"html"
 	"flag"
+	"time"
 )
 
 //import "github.com/kisielk/sqlstruct"
 import _ "github.com/mattn/go-sqlite3"
-
-const History = "History_copy" // filename.  should be taken as an argument in the future
-const limit = 5 // query LIMIT in sql ... should be a command line argument
-// ...no need of type specification
 
 type Visit struct {
 	// from "visits" table
@@ -78,29 +75,84 @@ type Abnode struct {
 	Dsuccs Dsuccs `xml:"dsuccs,omitempty"` // omitempty not working?
 	Content Content `xml:"content"`
 }
+const layout = "2006-01-02 MST"
+const layout_onlyDate = "2006-01-02"
+func setPath_Query() (path string, query string) {
+	// --last <num> History [output]  --> query: ORDER BY visit_time DESC LIMIT <num>
+	// --since <date> History [output] --> query: WHERE visit_time > <utcDate>
+	// --between <date> <date> History [output]
 
-func init() {
-	// History --last <num> [file]  --> query: ORDER BY visit_time DESC LIMIT <num>
-	// History --since <date> [file] --> query: WHERE visit_time > <utcDate>
-	// History --between <date> <date> [file]
+	lastFlag := flag.Bool("last", false, "<int> [History]: last <int> number of visits to process from now")
+	sinceFlag := flag.Bool("since", false, "<yyyy-mm-dd> [History]: since when to process visits")
+	betweenFlag := flag.Bool("between", false, "<yyyy-mm-dd> <yyyy-mm-dd> [History]: period to process visits")
 	
+	flag.Parse()
+
+	// check validity of flags given
+	if n:= flag.NFlag(); n != 1 {
+		flag.Usage()
+		log.Fatal("only one flag is permitted: abort")
+	}
+	if nargs:= flag.NArg(); nargs < 2 || nargs > 4 {
+		flag.Usage()
+		log.Fatal("invalid number of arguments passed: abort")
+	}
+	// check History file path
+	path = flag.Arg(len(flag.Args())-1) // the last element is the History file path
+	if _, err := os.Stat(path); os.IsNotExist(err){
+		log.Fatal(err) // if there is no error, path is correctly set (ready to return it)
+	}
+
+	query = "SELECT visits.id, visits.from_visit, visits.visit_time, visits.transition, urls.url, urls.title FROM visits LEFT JOIN urls ON visits.url = urls.id "
+	const orderbyVisit_time = "ORDER BY visit_time DESC "
+	
+	if *lastFlag {
+		query += orderbyVisit_time + "LIMIT " + flag.Arg(0)
+		return
+	}
+	// get system zone
+	now := time.Now()
+	zone, _ := now.Zone()
+	// create time obj 
+	from, err := time.Parse(layout_onlyDate, flag.Arg(0) + " " + zone) // <date> of form "2013-11-11"
+	if err != nil {
+		log.Fatal(err)
+	}
+	if *sinceFlag {
+		query += "WHERE visit_time >=" + strconv.FormatInt(getChromeSecond(from.UTC()), 10) + orderbyVisit_time
+		return
+	}
+	to, err := time.Parse(layout_onlyDate, flag.Arg(1) + " " + zone)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if *betweenFlag {
+		query += "WHERE visit_time >=" + strconv.FormatInt(getChromeSecond(from), 10) + "AND visit_time <=" + strconv.FormatInt(getChromeSecond(to.UTC()), 10) + orderbyVisit_time
+		return
+	}
+	log.Fatal("Unexpected error occured during parsing arguments.")
+	return 
+}
+
+var chrome_origin time.Time = time.Date(1601, 1, 1, 0, 0, 0, 0, time.UTC)
+func getChromeSecond(t time.Time) int64 {
+	return (t.Unix() - chrome_origin.Unix())*1e6
 }
 func main() {
-	init() // command line args, flag management
+	History, query := setPath_Query() // query string and file path is set according to the args
 	
 	// (I)   read data from  sql "History"
-	moveToDir() // for current use
+//	moveToDir() // for current use
 	db, err := sql.Open("sqlite3", History)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer db.Close()
 	
-	sqlStmt := chooseSqlStmt(1) // should be fully implemented
-//	fmt.Println("Query:" + sqlStmt)
+//	fmt.Println("Query:" + query)
 	Visits := make(map[int]Visit)
 
-	raws, err := db.Query(sqlStmt)
+	raws, err := db.Query(query)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -205,30 +257,30 @@ func main() {
 // 	encoder := json.NewEncoder(os.Stdout)
 // 	encoder.Encode(data)
 // }
-func moveToDir() { // should take argument as a filename
-	err := os.Chdir("/Users/DRW/Desktop/")
-	if err != nil{
-		log.Fatal(err)
-	}
-	// dir, err:= os.Getwd()
-	// if err != nil{
-	// 	log.Fatal(err)
-	// }
-//	fmt.Println("the current dir:"+dir)
+// func moveToDir() { // should take argument as a filename
+// 	err := os.Chdir("/Users/DRW/Desktop/")
+// 	if err != nil{
+// 		log.Fatal(err)
+// 	}
+// 	// dir, err:= os.Getwd()
+// 	// if err != nil{
+// 	// 	log.Fatal(err)
+// 	// }
+// //	fmt.Println("the current dir:"+dir)
 
-	if _, err := os.Stat(History); os.IsNotExist(err){
-		fmt.Printf("no such file: %s\n", History)
-	}
-}
+// 	if _, err := os.Stat(History); os.IsNotExist(err){
+// 		fmt.Printf("no such file: %s\n", History)
+// 	}
+// }
 
-func chooseSqlStmt(flag int) string{
-	// switch sql statement according to the argument
-	switch flag {
-	case 1:
-		return "SELECT visits.id, visits.from_visit, visits.visit_time, visits.transition, urls.url, urls.title FROM visits LEFT JOIN urls ON visits.url = urls.id ORDER BY visit_time DESC LIMIT "+strconv.Itoa(limit)
-	default:
-		return "" // invokes error
-	}
-}
+// func chooseSqlStmt(flag int) string{
+// 	// switch sql statement according to the argument
+// 	switch flag {
+// 	case 1:
+// 		return "SELECT visits.id, visits.from_visit, visits.visit_time, visits.transition, urls.url, urls.title FROM visits LEFT JOIN urls ON visits.url = urls.id ORDER BY visit_time DESC LIMIT "+strconv.Itoa(limit)
+// 	default:
+// 		return "" // invokes error
+// 	}
+// }
 
 //func map2list (map[
