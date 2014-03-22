@@ -8,7 +8,7 @@ import (
 //	"encoding/json"
 	"encoding/xml"
 	"strconv"
-	"html"
+//	"html"
 	"flag"
 	"time"
 //	"html"
@@ -117,20 +117,20 @@ func setPath_Query() (path string, query string) {
 	now := time.Now()
 	zone, _ := now.Zone()
 	// create time obj 
-	from, err := time.Parse(layout_onlyDate, flag.Arg(0) + " " + zone) // <date> of form "2013-11-11"
+	from, err := time.Parse(layout, flag.Arg(0) + " " + zone) // <date> of form "2013-11-11"
 	if err != nil {
 		log.Fatal(err)
 	}
 	if *sinceFlag {
-		query += "WHERE visit_time >=" + strconv.FormatInt(getChromeSecond(from.UTC()), 10) + orderbyVisit_time
+		query += "WHERE visit_time >=" + strconv.FormatInt(getChromeSecond(from.UTC()), 10) + " " + orderbyVisit_time
 		return
 	}
-	to, err := time.Parse(layout_onlyDate, flag.Arg(1) + " " + zone)
+	to, err := time.Parse(layout, flag.Arg(1) + " " + zone)
 	if err != nil {
 		log.Fatal(err)
 	}
 	if *betweenFlag {
-		query += "WHERE visit_time >=" + strconv.FormatInt(getChromeSecond(from), 10) + "AND visit_time <=" + strconv.FormatInt(getChromeSecond(to.UTC()), 10) + orderbyVisit_time
+		query += "WHERE visit_time >= " + strconv.FormatInt(getChromeSecond(from), 10) + "AND visit_time <= " + strconv.FormatInt(getChromeSecond(to.UTC()), 10) + " " +orderbyVisit_time
 		return
 	}
 	log.Fatal("Unexpected error occured during parsing arguments.")
