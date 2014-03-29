@@ -1,7 +1,7 @@
 package main
 
 import (
-//	"fmt"
+	"fmt"
 	"database/sql"
 	"os"
 	"log"
@@ -113,6 +113,7 @@ func setPath_Query() (path string, query string) {
 		query += orderbyVisit_time + "LIMIT " + flag.Arg(0)
 		return
 	}
+	fmt.Println("returned")
 	// get system zone
 	now := time.Now()
 	zone, _ := now.Zone()
@@ -201,11 +202,12 @@ func main() {
 		// create A-node
 //		Abnodes[v.id] = Abnode{Name: strconv.Itoa(v.id), Content: Content{ContentType: ContentType, CDATA: buffer.String()}}
 		Abnodes[v.id] = Abnode{Name: strconv.Itoa(v.id), Content: Content{ContentType: ContentType, CDATA: buffer.String()}}
+//		fmt.Println("v.id:",v.id)
 //		fmt.Println("buffer content:",buffer.String())
 	}
 	
 	const maskVal = 100 // id of B-node is masked by *100
-	// create B-node)ake <abstructure-ref> 
+	// create B-node: make <abstructure-ref> 
 	for visitId , visit := range Visits {
 		sourceId := visit.from  // int
 		if _, exists := Visits[sourceId]; exists {
@@ -215,6 +217,34 @@ func main() {
 			trefs:= []Ref{tref}
 			masked := sourceId * maskVal
 			Abnodes[masked] = Abnode{Name: strconv.Itoa(masked),Dpreds: Dpreds{srefs}, Dsuccs: Dsuccs{trefs}}
+		} else { // new or initial page
+			if sourceId == 0 {
+				sref := Ref{strconv.Itoa(visitId-1)}
+				srefs:= []Ref{sref}
+				tref := Ref{strconv.Itoa(visitId)}
+				trefs:= []Ref{tref}
+				masked := visitId * maskVal * 10 // "new page mask"
+				Abnodes[masked] = Abnode{
+					Name: strconv.Itoa(masked),
+					Dpreds: Dpreds{srefs},
+					Dsuccs: Dsuccs{trefs},
+				}
+			} else { // initial page
+				
+			}
+			if _, exists := Visits[visitId - 1]; exists { // new tab
+				sref := Ref{strconv.Itoa(visitId-1)}
+				srefs:= []Ref{sref}
+				tref := Ref{strconv.Itoa(visitId)}
+				trefs:= []Ref{tref}
+				masked := sourceId * maskVal * 10 // "new page mask"
+				Abnodes[masked] = Abnode{
+					Name: strconv.Itoa(masked),
+					Dpreds: Dpreds{srefs},
+					Dsuccs: Dsuccs{trefs},
+				}
+			}//  else { // initial page, coming from nowhere
+			// }			
 		}
 	}
 	type Abstructure struct {
@@ -226,7 +256,8 @@ func main() {
 	for _, abnode := range Abnodes {
 		Ablists = append(Ablists, abnode)
 	}
-	xmlOutput, err := xml.MarshalIndent(Abstructure{Abnodes: Ablists}, "  ", "    ")
+	abstruct := Abstructure{Abnodes: Ablists}
+	xmlOutput, err := xml.MarshalIndent(abstruct, "  ", "    ")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -237,7 +268,6 @@ func main() {
 	xmlOutput = bytes.Replace(xmlOutput, []byte("&gt;"), []byte(">"), -1)
 	xmlOutput = bytes.Replace(xmlOutput, []byte("&#39;"), []byte("'"), -1)
 	os.Stdout.Write(xmlOutput)
-	
 //	fmt.Println(Visits) no prob for Visits
 
 	// (II)  interpret the data as graph (json)
